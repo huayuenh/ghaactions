@@ -1,0 +1,270 @@
+name: 'IBM Cloud Container Registry Action'
+description: 'Push, pull, tag, and manage images in IBM Cloud Container Registry with vulnerability scanning'
+
+branding:
+  icon: 'cloud'
+  color: 'blue'
+
+inputs:
+  apikey:
+    description: 'IBM Cloud API key for authentication'
+    required: true
+  
+  image:
+    description: 'Full image path (e.g., us.icr.io/namespace/image:tag). Required for push, pull, tag, and retag actions'
+    required: false
+  
+  action:
+    description: 'Operation to perform: push, pull, tag, retag, or namespace'
+    required: true
+  
+  scan:
+    description: 'Enable vulnerability scanning after push/pull operations'
+    required: false
+    default: 'false'
+  
+  region:
+    description: 'IBM Cloud region (us-south, eu-gb, etc.). Auto-detected from image path if not specified'
+    required: false
+  
+  source-tag:
+    description: 'Source tag for retag operation'
+    required: false
+  
+  target-tag:
+    description: 'Target tag for tag/retag operations'
+    required: false
+  
+  namespace:
+    description: 'Namespace name for namespace operations'
+    required: false
+  
+  namespace-action:
+    description: 'Namespace operation: create, delete, or list'
+    required: false
+
+outputs:
+  scan-result:
+    description: 'Vulnerability scan results in JSON format'
+    value: ${{ steps.scan.outputs.result }}
+  
+  image-digest:
+    description: 'Image digest after push/pull operation'
+    value: ${{ steps.operation.outputs.digest }}
+  
+  namespaces:
+    description: 'List of namespaces (for namespace list action)'
+    value: ${{ steps.namespace-op.outputs.namespaces }}
+  
+  operation-status:
+    description: 'Status of the operation (success/failure)'
+    value: ${{ steps.operation.outputs.status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        echo "::group::Validating inputs"
+        
+        # Validate action type
+        if [[ ! "${{ inputs.action }}" =~ ^(push|pull|tag|retag|namespace)$ ]]; then
+          echo "::error::Invalid action type. Must be one of: push, pull, tag, retag, namespace"
+          exit 1
+        fi
+        
+        # Validate image is provided for image operations
+        if [[ "${{ inputs.action }}" =~ ^(push|pull|tag|retag)$ ]] && [[ -z "${{ inputs.image }}" ]]; then
+          echo "::error::Image path is required for ${{ inputs.action }} operation"
+          exit 1
+        fi
+        
+        # Validate namespace inputs
+        if [[ "${{ inputs.action }}" == "namespace" ]]; then
+          if [[ -z "${{ inputs.namespace-action }}" ]]; then
+            echo "::error::namespace-action is required for namespace operations"
+            exit 1
+          fi
+          if [[ ! "${{ inputs.namespace-action }}" =~ ^(create|delete|list)$ ]]; then
+            echo "::error::Invalid namespace-action. Must be one of: create, delete, list"
+            exit 1
+          fi
+          if [[ "${{ inputs.namespace-action }}" != "list" ]] && [[ -z "${{ inputs.namespace }}" ]]; then
+            echo "::error::namespace is required for create/delete operations"
+            exit 1
+          fi
+        fi
+        
+        # Validate tag/retag inputs
+        if [[ "${{ inputs.action }}" == "tag" ]] && [[ -z "${{ inputs.target-tag }}" ]]; then
+          echo "::error::target-tag is required for tag operation"
+          exit 1
+        fi
+        
+        if [[ "${{ inputs.action }}" == "retag" ]]; then
+          if [[ -z "${{ inputs.source-tag }}" ]] || [[ -z "${{ inputs.target-tag }}" ]]; then
+            echo "::error::Both source-tag and target-tag are required for retag operation"
+            exit 1
+          fi
+        fi
+        
+        echo "✓ Input validation passed"
+        echo "::endgroup::"
+    
+    - name: Install IBM Cloud CLI
+      shell: bash
+      run: |
+        echo "::group::Installing IBM Cloud CLI"
+        
+        # Check if IBM Cloud CLI is already installed
+        if command -v ibmcloud &> /dev/null; then
+          echo "IBM Cloud CLI is already installed"
+          ibmcloud --version
+        else
+          echo "Installing IBM Cloud CLI..."
+          curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
+          
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to install IBM Cloud CLI"
+            exit 1
+          fi
+          
+          echo "✓ IBM Cloud CLI installed successfully"
+          ibmcloud --version
+        fi
+        
+        echo "::endgroup::"
+    
+    - name: Install Container Registry plugin
+      shell: bash
+      run: |
+        echo "::group::Installing Container Registry plugin"
+        
+        # Check if plugin is already installed
+        if ibmcloud plugin list | grep -q "container-registry"; then
+          echo "Container Registry plugin is already installed"
+          ibmcloud plugin show container-registry
+        else
+          echo "Installing Container Registry plugin..."
+          ibmcloud plugin install container-registry -f
+          
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to install Container Registry plugin"
+            exit 1
+          fi
+          
+          echo "✓ Container Registry plugin installed successfully"
+        fi
+        
+        echo "::endgroup::"
+    
+    - name: Authenticate with IBM Cloud
+      shell: bash
+      env:
+        IBM_CLOUD_API_KEY: ${{ inputs.apikey }}
+      run: |
+        echo "::group::Authenticating with IBM Cloud"
+        
+        # Determine region
+        REGION="${{ inputs.region }}"
+        if [[ -z "$REGION" ]] && [[ -n "${{ inputs.image }}" ]]; then
+          # Auto-detect region from image path
+          IMAGE="${{ inputs.image }}"
+          if [[ "$IMAGE" =~ ^us\.icr\.io ]]; then
+            REGION="us-south"
+          elif [[ "$IMAGE" =~ ^eu\.icr\.io ]]; then
+            REGION="eu-gb"
+          elif [[ "$IMAGE" =~ ^uk\.icr\.io ]]; then
+            REGION="uk-south"
+          elif [[ "$IMAGE" =~ ^au\.icr\.io ]]; then
+            REGION="au-syd"
+          elif [[ "$IMAGE" =~ ^jp\.icr\.io ]]; then
+            REGION="jp-tok"
+          elif [[ "$IMAGE" =~ ^de\.icr\.io ]]; then
+            REGION="eu-de"
+          else
+            REGION="us-south"  # Default region
+          fi
+          echo "Auto-detected region: $REGION"
+        elif [[ -z "$REGION" ]]; then
+          REGION="us-south"  # Default region
+          echo "Using default region: $REGION"
+        fi
+        
+        # Login to IBM Cloud
+        echo "Logging in to IBM Cloud (region: $REGION)..."
+        ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$REGION" --no-region
+        
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to authenticate with IBM Cloud"
+          exit 1
+        fi
+        
+        echo "✓ Successfully authenticated with IBM Cloud"
+        
+        # Login to Container Registry
+        echo "Logging in to Container Registry..."
+        ibmcloud cr login
+        
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to login to Container Registry"
+          exit 1
+        fi
+        
+        echo "✓ Successfully logged in to Container Registry"
+        echo "::endgroup::"
+    
+    - name: Execute operation
+      id: operation
+      shell: bash
+      run: ${{ github.action_path }}/scripts/main.sh
+      env:
+        ACTION_TYPE: ${{ inputs.action }}
+        IMAGE: ${{ inputs.image }}
+        SOURCE_TAG: ${{ inputs.source-tag }}
+        TARGET_TAG: ${{ inputs.target-tag }}
+        NAMESPACE: ${{ inputs.namespace }}
+        NAMESPACE_ACTION: ${{ inputs.namespace-action }}
+    
+    - name: Run vulnerability scan
+      id: scan
+      if: inputs.scan == 'true' && (inputs.action == 'push' || inputs.action == 'pull')
+      shell: bash
+      run: |
+        echo "::group::Running vulnerability scan"
+        
+        IMAGE="${{ inputs.image }}"
+        echo "Scanning image: $IMAGE"
+        
+        # Run vulnerability assessment
+        SCAN_OUTPUT=$(ibmcloud cr vulnerability-assessment "$IMAGE" --output json 2>&1)
+        SCAN_EXIT_CODE=$?
+        
+        if [ $SCAN_EXIT_CODE -ne 0 ]; then
+          echo "::warning::Vulnerability scan failed or returned warnings"
+          echo "$SCAN_OUTPUT"
+        else
+          echo "✓ Vulnerability scan completed"
+          echo "$SCAN_OUTPUT"
+        fi
+        
+        # Set output
+        echo "result<<EOF" >> $GITHUB_OUTPUT
+        echo "$SCAN_OUTPUT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "::endgroup::"
+    
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::Cleanup"
+        
+        # Logout from IBM Cloud
+        ibmcloud logout 2>/dev/null || true
+        
+        echo "✓ Cleanup completed"
+        echo "::endgroup::"
+
