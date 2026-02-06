@@ -54,16 +54,34 @@ extract_image_name() {
 # Function to push image
 push_image() {
     local image=$1
+    local local_image=$2
     
     echo "::group::Pushing image to IBM Cloud Container Registry"
-    print_info "Pushing image: $image"
+    print_info "Target image: $image"
     
-    # Check if image exists locally
-    if ! docker image inspect "$image" &> /dev/null; then
-        handle_error 1 "Image $image not found locally. Please build the image first."
+    # If local image is specified, tag it first
+    if [ -n "$local_image" ]; then
+        print_info "Local image: $local_image"
+        
+        # Check if local image exists
+        if ! docker image inspect "$local_image" &> /dev/null; then
+            handle_error 1 "Local image $local_image not found. Please build the image first."
+        fi
+        
+        # Tag the local image with the target registry path
+        print_info "Tagging local image $local_image as $image"
+        docker tag "$local_image" "$image"
+        handle_error $? "Failed to tag local image"
+        print_success "Image tagged successfully"
+    else
+        # Check if image exists locally
+        if ! docker image inspect "$image" &> /dev/null; then
+            handle_error 1 "Image $image not found locally. Please build the image first or specify local-image parameter."
+        fi
     fi
     
     # Push the image
+    print_info "Pushing image to registry..."
     docker push "$image"
     handle_error $? "Failed to push image $image"
     
@@ -245,7 +263,7 @@ main() {
             if [ -z "$IMAGE" ]; then
                 handle_error 1 "Image path is required for push operation"
             fi
-            push_image "$IMAGE"
+            push_image "$IMAGE" "$LOCAL_IMAGE"
             ;;
         
         pull)

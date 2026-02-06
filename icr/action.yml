@@ -14,6 +14,10 @@ inputs:
     description: 'Full image path (e.g., us.icr.io/namespace/image:tag). Required for push, pull, tag, and retag actions'
     required: false
   
+  local-image:
+    description: 'Local image name to tag and push (e.g., myapp:latest). If specified, this image will be tagged with the target image path before pushing'
+    required: false
+  
   action:
     description: 'Operation to perform: push, pull, tag, retag, or namespace'
     required: true
@@ -222,6 +226,7 @@ runs:
       env:
         ACTION_TYPE: ${{ inputs.action }}
         IMAGE: ${{ inputs.image }}
+        LOCAL_IMAGE: ${{ inputs.local-image }}
         SOURCE_TAG: ${{ inputs.source-tag }}
         TARGET_TAG: ${{ inputs.target-tag }}
         NAMESPACE: ${{ inputs.namespace }}
