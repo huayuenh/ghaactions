@@ -194,7 +194,7 @@ runs:
         
         # Login to IBM Cloud
         echo "Logging in to IBM Cloud (region: $REGION)..."
-        ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$REGION" --no-region
+        ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$REGION"
         
         if [ $? -ne 0 ]; then
           echo "::error::Failed to authenticate with IBM Cloud"
