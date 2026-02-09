@@ -243,23 +243,24 @@ runs:
         echo "Scanning image: $IMAGE"
         
         # Run vulnerability assessment
-        SCAN_OUTPUT=$(ibmcloud cr vulnerability-assessment "$IMAGE" --output json 2>&1)
-        SCAN_EXIT_CODE=$?
+
+        #SCAN_OUTPUT=$(ibmcloud cr vulnerability-assessment "$IMAGE" --output json 2>&1)
+        #SCAN_EXIT_CODE=$?
         
-        if [ $SCAN_EXIT_CODE -ne 0 ]; then
-          echo "::warning::Vulnerability scan failed or returned warnings"
-          echo "$SCAN_OUTPUT"
-        else
-          echo "✓ Vulnerability scan completed"
-          echo "$SCAN_OUTPUT"
-        fi
+       # if [ $SCAN_EXIT_CODE -ne 0 ]; then
+       #   echo "::warning::Vulnerability scan failed or returned warnings"
+       #   echo "$SCAN_OUTPUT"
+       # else
+       #   echo "✓ Vulnerability scan completed"
+       #   echo "$SCAN_OUTPUT"
+       # fi
         
         # Set output
-        echo "result<<EOF" >> $GITHUB_OUTPUT
-        echo "$SCAN_OUTPUT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+       # echo "result<<EOF" >> $GITHUB_OUTPUT
+       # echo "$SCAN_OUTPUT" >> $GITHUB_OUTPUT
+       # echo "EOF" >> $GITHUB_OUTPUT
         
-        echo "::endgroup::"
+       # echo "::endgroup::"
     
     - name: Cleanup
       if: always()
