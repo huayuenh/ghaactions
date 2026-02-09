@@ -1,0 +1,111 @@
+name: 'Docker Build Action'
+description: 'Build Docker images with support for multi-platform builds, build arguments, and caching'
+author: 'Bob'
+
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  context:
+    description: 'Build context path (default: current directory)'
+    required: false
+    default: '.'
+  
+  dockerfile:
+    description: 'Path to Dockerfile (default: Dockerfile in context)'
+    required: false
+    default: 'Dockerfile'
+  
+  image-name:
+    description: 'Name and tag for the built image (e.g., myapp:latest)'
+    required: true
+  
+  build-args:
+    description: 'Build arguments in KEY=VALUE format, one per line'
+    required: false
+  
+  platforms:
+    description: 'Target platforms for multi-platform builds (e.g., linux/amd64,linux/arm64)'
+    required: false
+  
+  cache-from:
+    description: 'External cache sources (e.g., type=registry,ref=user/app:cache)'
+    required: false
+  
+  cache-to:
+    description: 'Cache export destination (e.g., type=registry,ref=user/app:cache,mode=max)'
+    required: false
+  
+  push:
+    description: 'Push the image after building (requires docker login)'
+    required: false
+    default: 'false'
+  
+  load:
+    description: 'Load the image into docker daemon (cannot be used with multi-platform builds)'
+    required: false
+    default: 'true'
+  
+  labels:
+    description: 'Image labels in KEY=VALUE format, one per line'
+    required: false
+  
+  target:
+    description: 'Target build stage (for multi-stage builds)'
+    required: false
+  
+  no-cache:
+    description: 'Do not use cache when building the image'
+    required: false
+    default: 'false'
+  
+  pull:
+    description: 'Always attempt to pull a newer version of the base image'
+    required: false
+    default: 'false'
+
+outputs:
+  image-name:
+    description: 'Full name of the built image'
+    value: ${{ steps.build.outputs.image-name }}
+  
+  image-id:
+    description: 'Image ID of the built image'
+    value: ${{ steps.build.outputs.image-id }}
+  
+  digest:
+    description: 'Image digest (if pushed)'
+    value: ${{ steps.build.outputs.digest }}
+  
+  metadata:
+    description: 'Build metadata in JSON format'
+    value: ${{ steps.build.outputs.metadata }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      shell: bash
+      
+    - name: Build Docker image
+      id: build
+      shell: bash
+      run: ${{ github.action_path }}/scripts/build.sh
+      env:
+        BUILD_CONTEXT: ${{ inputs.context }}
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        BUILD_ARGS: ${{ inputs.build-args }}
+        PLATFORMS: ${{ inputs.platforms }}
+        CACHE_FROM: ${{ inputs.cache-from }}
+        CACHE_TO: ${{ inputs.cache-to }}
+        PUSH: ${{ inputs.push }}
+        LOAD: ${{ inputs.load }}
+        LABELS: ${{ inputs.labels }}
+        TARGET: ${{ inputs.target }}
+        NO_CACHE: ${{ inputs.no-cache }}
+        PULL: ${{ inputs.pull }}
+
+# Made with Bob

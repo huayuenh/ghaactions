@@ -1,0 +1,212 @@
+name: 'Deploy to Kubernetes/OpenShift'
+description: 'Deploy container images to Kubernetes or Red Hat OpenShift clusters with health checks and status verification'
+author: 'Bob'
+
+branding:
+  icon: 'upload-cloud'
+  color: 'red'
+
+inputs:
+  image:
+    description: 'Container image to deploy (e.g., us.icr.io/namespace/app:tag)'
+    required: true
+  
+  cluster-type:
+    description: 'Cluster type: kubernetes or openshift'
+    required: false
+    default: 'kubernetes'
+  
+  kubeconfig:
+    description: 'Kubeconfig content for cluster authentication (base64 encoded or plain text)'
+    required: false
+  
+  ibmcloud-apikey:
+    description: 'IBM Cloud API key (for IBM Cloud Kubernetes/OpenShift clusters)'
+    required: false
+  
+  cluster-name:
+    description: 'IBM Cloud cluster name (required when using ibmcloud-apikey)'
+    required: false
+  
+  cluster-region:
+    description: 'IBM Cloud cluster region (e.g., us-south, eu-gb)'
+    required: false
+    default: 'us-south'
+  
+  namespace:
+    description: 'Kubernetes namespace for deployment'
+    required: false
+    default: 'default'
+  
+  deployment-name:
+    description: 'Name of the deployment'
+    required: true
+  
+  deployment-manifest:
+    description: 'Path to Kubernetes deployment manifest file'
+    required: false
+  
+  container-name:
+    description: 'Container name in the deployment (defaults to deployment-name)'
+    required: false
+  
+  port:
+    description: 'Container port to expose'
+    required: false
+    default: '8080'
+  
+  service-type:
+    description: 'Service type: ClusterIP, NodePort, LoadBalancer, or Ingress'
+    required: false
+    default: 'LoadBalancer'
+  
+  replicas:
+    description: 'Number of replicas'
+    required: false
+    default: '1'
+  
+  health-check-path:
+    description: 'HTTP path for health check (e.g., /health, /ready)'
+    required: false
+    default: '/health'
+  
+  health-check-timeout:
+    description: 'Health check timeout in seconds'
+    required: false
+    default: '300'
+  
+  resource-limits-cpu:
+    description: 'CPU resource limit (e.g., 500m, 1)'
+    required: false
+    default: '500m'
+  
+  resource-limits-memory:
+    description: 'Memory resource limit (e.g., 512Mi, 1Gi)'
+    required: false
+    default: '512Mi'
+  
+  resource-requests-cpu:
+    description: 'CPU resource request (e.g., 250m, 0.5)'
+    required: false
+    default: '250m'
+  
+  resource-requests-memory:
+    description: 'Memory resource request (e.g., 256Mi, 512Mi)'
+    required: false
+    default: '256Mi'
+  
+  env-vars:
+    description: 'Environment variables in KEY=VALUE format, one per line'
+    required: false
+  
+  create-route:
+    description: 'Create OpenShift route (OpenShift only)'
+    required: false
+    default: 'true'
+  
+  route-hostname:
+    description: 'Custom hostname for OpenShift route'
+    required: false
+  
+  ingress-host:
+    description: 'Ingress hostname (Kubernetes only)'
+    required: false
+  
+  ingress-tls:
+    description: 'Enable TLS for ingress'
+    required: false
+    default: 'false'
+
+outputs:
+  deployment-status:
+    description: 'Status of the deployment (success/failure)'
+    value: ${{ steps.deploy.outputs.status }}
+  
+  application-url:
+    description: 'URL to access the deployed application'
+    value: ${{ steps.deploy.outputs.app-url }}
+  
+  service-ip:
+    description: 'Service external IP or hostname'
+    value: ${{ steps.deploy.outputs.service-ip }}
+  
+  health-check-result:
+    description: 'Health check result'
+    value: ${{ steps.health-check.outputs.result }}
+  
+  deployment-info:
+    description: 'Deployment information in JSON format'
+    value: ${{ steps.deploy.outputs.info }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        echo "::group::Validating inputs"
+        
+        if [[ ! "${{ inputs.cluster-type }}" =~ ^(kubernetes|openshift)$ ]]; then
+          echo "::error::Invalid cluster-type. Must be 'kubernetes' or 'openshift'"
+          exit 1
+        fi
+        
+        if [[ -z "${{ inputs.kubeconfig }}" ]] && [[ -z "${{ inputs.ibmcloud-apikey }}" ]]; then
+          echo "::error::Either kubeconfig or ibmcloud-apikey must be provided"
+          exit 1
+        fi
+        
+        if [[ -n "${{ inputs.ibmcloud-apikey }}" ]] && [[ -z "${{ inputs.cluster-name }}" ]]; then
+          echo "::error::cluster-name is required when using ibmcloud-apikey"
+          exit 1
+        fi
+        
+        echo "✓ Input validation passed"
+        echo "::endgroup::"
+    
+    - name: Setup cluster access
+      shell: bash
+      run: ${{ github.action_path }}/scripts/setup-cluster.sh
+      env:
+        CLUSTER_TYPE: ${{ inputs.cluster-type }}
+        KUBECONFIG_CONTENT: ${{ inputs.kubeconfig }}
+        IBM_CLOUD_API_KEY: ${{ inputs.ibmcloud-apikey }}
+        CLUSTER_NAME: ${{ inputs.cluster-name }}
+        CLUSTER_REGION: ${{ inputs.cluster-region }}
+    
+    - name: Deploy application
+      id: deploy
+      shell: bash
+      run: ${{ github.action_path }}/scripts/deploy.sh
+      env:
+        IMAGE: ${{ inputs.image }}
+        CLUSTER_TYPE: ${{ inputs.cluster-type }}
+        NAMESPACE: ${{ inputs.namespace }}
+        DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        DEPLOYMENT_MANIFEST: ${{ inputs.deployment-manifest }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+        PORT: ${{ inputs.port }}
+        SERVICE_TYPE: ${{ inputs.service-type }}
+        REPLICAS: ${{ inputs.replicas }}
+        RESOURCE_LIMITS_CPU: ${{ inputs.resource-limits-cpu }}
+        RESOURCE_LIMITS_MEMORY: ${{ inputs.resource-limits-memory }}
+        RESOURCE_REQUESTS_CPU: ${{ inputs.resource-requests-cpu }}
+        RESOURCE_REQUESTS_MEMORY: ${{ inputs.resource-requests-memory }}
+        ENV_VARS: ${{ inputs.env-vars }}
+        CREATE_ROUTE: ${{ inputs.create-route }}
+        ROUTE_HOSTNAME: ${{ inputs.route-hostname }}
+        INGRESS_HOST: ${{ inputs.ingress-host }}
+        INGRESS_TLS: ${{ inputs.ingress-tls }}
+    
+    - name: Health check
+      id: health-check
+      shell: bash
+      run: ${{ github.action_path }}/scripts/health-check.sh
+      env:
+        NAMESPACE: ${{ inputs.namespace }}
+        DEPLOYMENT_NAME: ${{ inputs.deployment-name }}
+        HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
+        HEALTH_CHECK_TIMEOUT: ${{ inputs.health-check-timeout }}
+        APP_URL: ${{ steps.deploy.outputs.app-url }}
+
+# Made with Bob
