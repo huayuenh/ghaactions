@@ -66,7 +66,7 @@ elif [ -n "$IBM_CLOUD_API_KEY" ]; then
     fi
     
     # Login to IBM Cloud
-    ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$CLUSTER_REGION" --no-region
+    ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$CLUSTER_REGION"
     handle_error $? "Failed to authenticate with IBM Cloud"
     
     print_success "Authenticated with IBM Cloud"
