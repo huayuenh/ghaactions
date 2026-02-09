@@ -1,6 +1,5 @@
 name: 'Docker Build Action'
 description: 'Build Docker images with support for multi-platform builds, build arguments, and caching'
-author: 'Bob'
 
 branding:
   icon: 'package'
@@ -87,7 +86,7 @@ runs:
   steps:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-      shell: bash
+      #shell: bash
       
     - name: Build Docker image
       id: build
@@ -107,5 +106,3 @@ runs:
         TARGET: ${{ inputs.target }}
         NO_CACHE: ${{ inputs.no-cache }}
         PULL: ${{ inputs.pull }}
-
-# Made with Bob
