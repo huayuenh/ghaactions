@@ -56,9 +56,9 @@ inputs:
     default: '8080'
   
   service-type:
-    description: 'Service type: ClusterIP, NodePort, LoadBalancer, or Ingress'
+    description: 'Service type: ClusterIP, NodePort, LoadBalancer'
     required: false
-    default: 'LoadBalancer'
+    default: 'ClusterIP'
   
   replicas:
     description: 'Number of replicas'

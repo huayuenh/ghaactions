@@ -253,6 +253,10 @@ sleep 5  # Wait for service to be fully provisioned
 
 SERVICE_IP=""
 APP_URL=""
+CLUSTER_IP=""
+
+# Get cluster IP (always available)
+CLUSTER_IP=$($CMD get service $DEPLOYMENT_NAME -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "")
 
 if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
     # Wait for external IP
@@ -276,20 +280,38 @@ if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
         APP_URL="http://${SERVICE_IP}"
         print_success "LoadBalancer IP: $SERVICE_IP"
     else
-        print_warning "LoadBalancer IP not yet assigned"
+        print_warning "LoadBalancer IP not yet assigned (this is normal for VPC clusters without LB)"
+        print_info "Service is accessible within cluster at: ${CLUSTER_IP}:80"
     fi
     
 elif [ "$SERVICE_TYPE" = "NodePort" ]; then
     NODE_PORT=$($CMD get service $DEPLOYMENT_NAME -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
+    
+    # Try to get external IP first, fall back to internal IP
     NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || echo "")
     
     if [ -z "$NODE_IP" ]; then
         NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+        print_info "Using internal node IP (no external IP available)"
     fi
     
-    SERVICE_IP="${NODE_IP}:${NODE_PORT}"
-    APP_URL="http://${SERVICE_IP}"
-    print_success "NodePort: $NODE_PORT on $NODE_IP"
+    if [ -n "$NODE_IP" ] && [ -n "$NODE_PORT" ]; then
+        SERVICE_IP="${NODE_IP}:${NODE_PORT}"
+        APP_URL="http://${SERVICE_IP}"
+        print_success "NodePort: $NODE_PORT on $NODE_IP"
+    fi
+    
+elif [ "$SERVICE_TYPE" = "ClusterIP" ]; then
+    print_info "Service type is ClusterIP - accessible only within the cluster"
+    if [ -n "$CLUSTER_IP" ]; then
+        SERVICE_IP="${CLUSTER_IP}:80"
+        print_info "Cluster IP: $CLUSTER_IP"
+        print_info "Internal URL: http://${SERVICE_IP}"
+        print_info "Service DNS: ${DEPLOYMENT_NAME}.${NAMESPACE}.svc.cluster.local"
+        
+        # For ClusterIP, provide the internal DNS name as the URL
+        APP_URL="http://${DEPLOYMENT_NAME}.${NAMESPACE}.svc.cluster.local"
+    fi
 fi
 
 # Handle OpenShift Route
