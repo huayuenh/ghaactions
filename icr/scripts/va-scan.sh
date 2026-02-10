@@ -51,26 +51,24 @@ run_va_scan() {
         ATTEMPT=$((ATTEMPT + 1))
         echo "Checking scan status (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
         
-        # Get scan results
-        SCAN_OUTPUT=$(ibmcloud cr va "$image" --output json 2>&1)
-        SCAN_EXIT_CODE=$?
+        # Get scan results (ignore exit code, only check JSON output)
+        SCAN_OUTPUT=$(ibmcloud cr va "$image" --output json 2>&1 || true)
         
-        # Check if scan command executed successfully
-        if [ $SCAN_EXIT_CODE -eq 0 ]; then
-            # Extract status from JSON output using jq
-            SCAN_STATUS=$(echo "$SCAN_OUTPUT" | jq -r '.[0].status' 2>/dev/null)
+        # Extract status from JSON output using jq
+        SCAN_STATUS=$(echo "$SCAN_OUTPUT" | jq -r '.[0].status' 2>/dev/null || echo "")
+        
+        # Check if we got a valid status
+        if [ -n "$SCAN_STATUS" ] && [ "$SCAN_STATUS" != "null" ]; then
+            echo "Current scan status: $SCAN_STATUS"
             
-            # Check if we got a valid status
-            if [ -n "$SCAN_STATUS" ] && [ "$SCAN_STATUS" != "null" ]; then
-                echo "Current scan status: $SCAN_STATUS"
-                
-                # Check if scan is complete (not INCOMPLETE or UNSCANNED)
-                if [[ "$SCAN_STATUS" != "INCOMPLETE" ]] && [[ "$SCAN_STATUS" != "UNSCANNED" ]]; then
-                    SCAN_COMPLETE=true
-                    print_success "Scan completed successfully!"
-                    break
-                fi
+            # Check if scan is complete (not INCOMPLETE or UNSCANNED)
+            if [[ "$SCAN_STATUS" != "INCOMPLETE" ]] && [[ "$SCAN_STATUS" != "UNSCANNED" ]]; then
+                SCAN_COMPLETE=true
+                print_success "Scan completed successfully!"
+                break
             fi
+        else
+            echo "Scan status not yet available or could not be parsed"
         fi
         
         if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
