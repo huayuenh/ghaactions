@@ -126,7 +126,7 @@ runs:
       id: setup-ibmcloud
       uses: IBM/actions-ibmcloud-cli@v1
       with:
-        api-key: ${{ inputs.apikey }}
+        api_key: ${{ inputs.apikey }}
         region: ${{ inputs.region }}
         plugins: container-registry
     
