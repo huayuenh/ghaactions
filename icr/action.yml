@@ -124,7 +124,7 @@ runs:
     
     - name: Setup IBM Cloud CLI
       id: setup-ibmcloud
-      uses: ibm-cloud-docs/github-actions/ibmcloud-cli@v1
+      uses: IBM/actions-ibmcloud-cli@v1
       with:
         api-key: ${{ inputs.apikey }}
         region: ${{ inputs.region }}
