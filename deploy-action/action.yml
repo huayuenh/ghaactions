@@ -197,6 +197,8 @@ runs:
         ROUTE_HOSTNAME: ${{ inputs.route-hostname }}
         INGRESS_HOST: ${{ inputs.ingress-host }}
         INGRESS_TLS: ${{ inputs.ingress-tls }}
+        IBM_CLOUD_API_KEY: ${{ inputs.ibmcloud-apikey }}
+        HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
     
     - name: Health check
       id: health-check

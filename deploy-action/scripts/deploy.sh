@@ -55,6 +55,41 @@ print_info "Ensuring namespace exists..."
 $CMD get namespace "$NAMESPACE" &>/dev/null || $CMD create namespace "$NAMESPACE"
 print_success "Namespace ready: $NAMESPACE"
 
+# Create image pull secret for IBM Cloud Container Registry
+if [[ "$IMAGE" =~ \.icr\.io/ ]]; then
+    print_info "Creating image pull secret for IBM Cloud Container Registry..."
+    
+    # Extract registry from image (e.g., us.icr.io from us.icr.io/namespace/image:tag)
+    REGISTRY=$(echo "$IMAGE" | cut -d'/' -f1)
+    
+    # Check if we have IBM Cloud API key (from environment or kubeconfig setup)
+    if [ -n "$IBM_CLOUD_API_KEY" ]; then
+        print_info "Using IBM Cloud API key for image pull secret"
+        
+        # Create or update the image pull secret
+        $CMD create secret docker-registry icr-secret \
+            --docker-server="$REGISTRY" \
+            --docker-username=iamapikey \
+            --docker-password="$IBM_CLOUD_API_KEY" \
+            --docker-email=iamapikey@ibm.com \
+            -n "$NAMESPACE" \
+            --dry-run=client -o yaml | $CMD apply -f -
+        
+        handle_error $? "Failed to create image pull secret"
+        print_success "Image pull secret created/updated: icr-secret"
+        
+        # Set the image pull secret name to use in deployment
+        IMAGE_PULL_SECRET="icr-secret"
+    else
+        print_warning "No IBM Cloud API key available for image pull secret"
+        print_warning "Assuming cluster already has access to the registry"
+        IMAGE_PULL_SECRET=""
+    fi
+else
+    print_info "Image is not from IBM Cloud Container Registry, skipping image pull secret creation"
+    IMAGE_PULL_SECRET=""
+fi
+
 # Set container name
 CONTAINER_NAME_ACTUAL="${CONTAINER_NAME:-$DEPLOYMENT_NAME}"
 
@@ -89,6 +124,18 @@ spec:
       labels:
         app: $DEPLOYMENT_NAME
     spec:
+EOF
+
+    # Add image pull secrets if available
+    if [ -n "$IMAGE_PULL_SECRET" ]; then
+        cat >> /tmp/deployment.yaml <<EOF
+      imagePullSecrets:
+      - name: $IMAGE_PULL_SECRET
+EOF
+    fi
+
+    # Continue with container spec
+    cat >> /tmp/deployment.yaml <<EOF
       containers:
       - name: $CONTAINER_NAME_ACTUAL
         image: $IMAGE
