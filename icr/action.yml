@@ -237,64 +237,7 @@ runs:
       id: scan
       if: inputs.scan == 'true' && (inputs.action == 'push' || inputs.action == 'pull')
       shell: bash
-      run: |
-        echo "::group::Running vulnerability scan"
-        
-        IMAGE="${{ inputs.image }}"
-        echo "Scanning image: $IMAGE"
-        
-        # Retry configuration
-        MAX_DURATION=300  # 5 minutes in seconds
-        RETRY_INTERVAL=15  # 15 seconds between retries
-        START_TIME=$(date +%s)
-        SCAN_OUTPUT=""
-        SCAN_SUCCESS=false
-        
-        echo "Will retry for up to 5 minutes (checking every ${RETRY_INTERVAL} seconds)..."
-        
-        # Retry loop
-        while true; do
-          CURRENT_TIME=$(date +%s)
-          ELAPSED=$((CURRENT_TIME - START_TIME))
-          
-          if [ $ELAPSED -ge $MAX_DURATION ]; then
-            echo "::warning::Vulnerability scan timeout after 5 minutes"
-            break
-          fi
-          
-          # Run vulnerability assessment
-          SCAN_OUTPUT=$(ibmcloud cr vulnerability-assessment "$IMAGE" --output json 2>&1)
-          SCAN_EXIT_CODE=$?
-          
-          # Check if scan completed successfully
-          if [ $SCAN_EXIT_CODE -eq 0 ]; then
-            # Verify the output contains actual scan results (not just "scan in progress")
-            if echo "$SCAN_OUTPUT" | grep -q '"status"'; then
-              SCAN_SUCCESS=true
-              echo "✓ Vulnerability scan completed successfully"
-              echo "$SCAN_OUTPUT"
-              break
-            fi
-          fi
-          
-          # If scan is still in progress or failed, wait and retry
-          REMAINING=$((MAX_DURATION - ELAPSED))
-          echo "Scan not ready yet. Retrying in ${RETRY_INTERVAL} seconds... (${REMAINING}s remaining)"
-          sleep $RETRY_INTERVAL
-        done
-        
-        # Handle final result
-        if [ "$SCAN_SUCCESS" = false ]; then
-          echo "::warning::Vulnerability scan did not complete within the timeout period"
-          echo "Last output: $SCAN_OUTPUT"
-        fi
-        
-        # Set output
-        echo "result<<EOF" >> $GITHUB_OUTPUT
-        echo "$SCAN_OUTPUT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-        
-        echo "::endgroup::"
+      run: ${{ github.action_path }}/scripts/va-scan.sh "${{ inputs.image }}"
     
     - name: Cleanup
       if: always()
