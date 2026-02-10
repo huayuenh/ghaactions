@@ -20,7 +20,7 @@ inputs:
     required: false
   
   action:
-    description: 'Operation to perform: push, pull, tag, retag, or namespace'
+    description: 'Operation to perform: push, pull, tag, retag, delete, or namespace'
     required: true
   
   scan:
@@ -79,13 +79,13 @@ runs:
         echo "::group::Validating inputs"
         
         # Validate action type
-        if [[ ! "${{ inputs.action }}" =~ ^(push|pull|tag|retag|namespace)$ ]]; then
-          echo "::error::Invalid action type. Must be one of: push, pull, tag, retag, namespace"
+        if [[ ! "${{ inputs.action }}" =~ ^(push|pull|tag|retag|delete|namespace)$ ]]; then
+          echo "::error::Invalid action type. Must be one of: push, pull, tag, retag, delete, namespace"
           exit 1
         fi
         
         # Validate image is provided for image operations
-        if [[ "${{ inputs.action }}" =~ ^(push|pull|tag|retag)$ ]] && [[ -z "${{ inputs.image }}" ]]; then
+        if [[ "${{ inputs.action }}" =~ ^(push|pull|tag|retag|delete)$ ]] && [[ -z "${{ inputs.image }}" ]]; then
           echo "::error::Image path is required for ${{ inputs.action }} operation"
           exit 1
         fi

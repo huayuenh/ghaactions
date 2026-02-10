@@ -126,6 +126,31 @@ pull_image() {
     echo "::endgroup::"
 }
 
+# Function to delete image
+delete_image() {
+    local image=$1
+    
+    echo "::group::Deleting image from IBM Cloud Container Registry"
+    print_info "Deleting image: $image"
+    
+    # Check if image exists
+    if ! ibmcloud cr image-inspect "$image" &> /dev/null; then
+        print_warning "Image $image not found in registry"
+        echo "status=not_found" >> $GITHUB_OUTPUT
+        echo "::endgroup::"
+        return 0
+    fi
+    
+    # Delete the image
+    print_warning "Deleting image from registry..."
+    ibmcloud cr image-rm "$image" -f
+    handle_error $? "Failed to delete image $image"
+    
+    print_success "Image deleted successfully"
+    echo "status=success" >> $GITHUB_OUTPUT
+    echo "::endgroup::"
+}
+
 # Function to tag image
 tag_image() {
     local image=$1
@@ -271,6 +296,13 @@ main() {
                 handle_error 1 "Image path is required for pull operation"
             fi
             pull_image "$IMAGE"
+            ;;
+        
+        delete)
+            if [ -z "$IMAGE" ]; then
+                handle_error 1 "Image path is required for delete operation"
+            fi
+            delete_image "$IMAGE"
             ;;
         
         tag)
