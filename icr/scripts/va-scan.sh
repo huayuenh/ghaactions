@@ -32,30 +32,26 @@ run_va_scan() {
     echo "::group::Running vulnerability scan"
     
     print_info "Scanning image: $image"
+    echo
     
-    # Retry configuration
-    MAX_DURATION=300  # 5 minutes in seconds
-    RETRY_INTERVAL=15  # 15 seconds between retries
-    START_TIME=$(date +%s)
+    # Initiate the vulnerability scan
+    print_info "Initiating vulnerability scan..."
+    ibmcloud cr va "$image" --output json || true
+    echo
+    
+    # Wait for scan to complete (poll every 10 seconds, max 5 minutes)
+    print_info "Waiting for scan results..."
+    MAX_ATTEMPTS=30  # 30 attempts * 10 seconds = 5 minutes
+    ATTEMPT=0
     SCAN_OUTPUT=""
     SCAN_STATUS=""
     SCAN_COMPLETE=false
     
-    print_info "Will retry for up to 5 minutes (checking every ${RETRY_INTERVAL} seconds)..."
-    
-    # Retry loop
-    while true; do
-        CURRENT_TIME=$(date +%s)
-        ELAPSED=$((CURRENT_TIME - START_TIME))
+    while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+        ATTEMPT=$((ATTEMPT + 1))
+        echo "Checking scan status (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
         
-        if [ $ELAPSED -ge $MAX_DURATION ]; then
-            print_error "Vulnerability scan timeout after 5 minutes"
-            echo "::error::Vulnerability scan timeout after 5 minutes"
-            echo "status=timeout" >> $GITHUB_OUTPUT
-            exit 1
-        fi
-        
-        # Run vulnerability assessment using the correct 'va' command
+        # Get scan results
         SCAN_OUTPUT=$(ibmcloud cr va "$image" --output json 2>&1)
         SCAN_EXIT_CODE=$?
         
@@ -66,55 +62,63 @@ run_va_scan() {
             
             # Check if we got a valid status
             if [ -n "$SCAN_STATUS" ] && [ "$SCAN_STATUS" != "null" ]; then
-                print_info "Scan status: $SCAN_STATUS"
+                echo "Current scan status: $SCAN_STATUS"
                 
                 # Check if scan is complete (not INCOMPLETE or UNSCANNED)
                 if [[ "$SCAN_STATUS" != "INCOMPLETE" ]] && [[ "$SCAN_STATUS" != "UNSCANNED" ]]; then
                     SCAN_COMPLETE=true
-                    print_success "Vulnerability scan completed"
-                    echo "$SCAN_OUTPUT"
+                    print_success "Scan completed successfully!"
                     break
-                else
-                    # Scan still in progress
-                    REMAINING=$((MAX_DURATION - ELAPSED))
-                    print_info "Scan status: $SCAN_STATUS - still in progress. Retrying in ${RETRY_INTERVAL} seconds... (${REMAINING}s remaining)"
                 fi
-            else
-                # Could not parse status, wait and retry
-                REMAINING=$((MAX_DURATION - ELAPSED))
-                print_warning "Could not parse scan status. Retrying in ${RETRY_INTERVAL} seconds... (${REMAINING}s remaining)"
             fi
-        else
-            # Command failed, wait and retry
-            REMAINING=$((MAX_DURATION - ELAPSED))
-            print_warning "Scan command failed. Retrying in ${RETRY_INTERVAL} seconds... (${REMAINING}s remaining)"
         fi
         
-        sleep $RETRY_INTERVAL
+        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            print_warning "Scan did not complete within timeout period (5 minutes)"
+            break
+        fi
+        
+        sleep 10
     done
+    
+    echo
+    echo "=== Vulnerability Scan Results ==="
+    echo "$SCAN_OUTPUT"
+    echo
     
     # Handle final result based on status
     if [ "$SCAN_COMPLETE" = true ]; then
         case "$SCAN_STATUS" in
-            OK|WARN|UNSUPPORTED)
-                print_success "Scan completed with status: $SCAN_STATUS"
+            OK)
+                print_success "✓ Scan completed with status: OK - No vulnerabilities found"
+                echo "status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+                ;;
+            WARN)
+                print_warning "⚠ Scan completed with status: WARN - Warnings found"
+                echo "status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+                ;;
+            UNSUPPORTED)
+                print_info "ℹ Scan completed with status: UNSUPPORTED - Image type not supported for scanning"
                 echo "status=$SCAN_STATUS" >> $GITHUB_OUTPUT
                 ;;
             FAIL)
-                print_error "Vulnerability scan failed with status: FAIL"
-                echo "::error::Vulnerability scan failed with status: FAIL"
+                print_error "✗ Vulnerability scan failed with status: FAIL - Critical vulnerabilities found"
+                echo "::error::Critical vulnerabilities found in image"
                 echo "status=FAIL" >> $GITHUB_OUTPUT
-                echo "$SCAN_OUTPUT"
                 exit 1
                 ;;
             *)
-                print_error "Vulnerability scan returned unexpected status: $SCAN_STATUS"
-                echo "::error::Vulnerability scan returned unexpected status: $SCAN_STATUS"
+                print_error "✗ Vulnerability scan returned unexpected status: $SCAN_STATUS"
+                echo "::error::Unexpected scan status: $SCAN_STATUS"
                 echo "status=$SCAN_STATUS" >> $GITHUB_OUTPUT
-                echo "$SCAN_OUTPUT"
                 exit 1
                 ;;
         esac
+    else
+        print_warning "⚠ Scan did not complete within the timeout period"
+        echo "::warning::Vulnerability scan timeout - results may be incomplete"
+        echo "status=timeout" >> $GITHUB_OUTPUT
+        # Don't fail the build on timeout, just warn
     fi
     
     # Set output
