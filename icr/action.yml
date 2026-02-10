@@ -122,61 +122,22 @@ runs:
         echo "✓ Input validation passed"
         echo "::endgroup::"
     
-    - name: Install IBM Cloud CLI
-      shell: bash
-      run: |
-        echo "::group::Installing IBM Cloud CLI"
-        
-        # Check if IBM Cloud CLI is already installed
-        if command -v ibmcloud &> /dev/null; then
-          echo "IBM Cloud CLI is already installed"
-          ibmcloud --version
-        else
-          echo "Installing IBM Cloud CLI..."
-          curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
-          
-          if [ $? -ne 0 ]; then
-            echo "::error::Failed to install IBM Cloud CLI"
-            exit 1
-          fi
-          
-          echo "✓ IBM Cloud CLI installed successfully"
-          ibmcloud --version
-        fi
-        
-        echo "::endgroup::"
+    - name: Setup IBM Cloud CLI
+      id: setup-ibmcloud
+      uses: ibm-cloud-docs/github-actions/ibmcloud-cli@v1
+      with:
+        api-key: ${{ inputs.apikey }}
+        region: ${{ inputs.region }}
+        plugins: container-registry
     
-    - name: Install Container Registry plugin
-      shell: bash
-      run: |
-        echo "::group::Installing Container Registry plugin"
-        
-        # Check if plugin is already installed
-        if ibmcloud plugin list | grep -q "container-registry"; then
-          echo "Container Registry plugin is already installed"
-          ibmcloud plugin show container-registry
-        else
-          echo "Installing Container Registry plugin..."
-          ibmcloud plugin install container-registry -f
-          
-          if [ $? -ne 0 ]; then
-            echo "::error::Failed to install Container Registry plugin"
-            exit 1
-          fi
-          
-          echo "✓ Container Registry plugin installed successfully"
-        fi
-        
-        echo "::endgroup::"
-    
-    - name: Authenticate with IBM Cloud
+    - name: Determine region and authenticate
       shell: bash
       env:
         IBM_CLOUD_API_KEY: ${{ inputs.apikey }}
       run: |
         echo "::group::Authenticating with IBM Cloud"
         
-        # Determine region
+        # Determine region if not already set
         REGION="${{ inputs.region }}"
         if [[ -z "$REGION" ]] && [[ -n "${{ inputs.image }}" ]]; then
           # Auto-detect region from image path
@@ -197,21 +158,20 @@ runs:
             REGION="us-south"  # Default region
           fi
           echo "Auto-detected region: $REGION"
-        elif [[ -z "$REGION" ]]; then
-          REGION="us-south"  # Default region
-          echo "Using default region: $REGION"
+          
+          # Re-login with detected region if different
+          if [[ "$REGION" != "${{ inputs.region }}" ]]; then
+            echo "Logging in to IBM Cloud with detected region: $REGION..."
+            ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$REGION" --no-region
+            
+            if [ $? -ne 0 ]; then
+              echo "::error::Failed to authenticate with IBM Cloud"
+              exit 1
+            fi
+          fi
         fi
         
-        # Login to IBM Cloud
-        echo "Logging in to IBM Cloud (region: $REGION)..."
-        ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$REGION"
-        
-        if [ $? -ne 0 ]; then
-          echo "::error::Failed to authenticate with IBM Cloud"
-          exit 1
-        fi
-        
-        echo "✓ Successfully authenticated with IBM Cloud"
+        echo "✓ IBM Cloud CLI configured and authenticated"
         
         # Login to Container Registry
         echo "Logging in to Container Registry..."

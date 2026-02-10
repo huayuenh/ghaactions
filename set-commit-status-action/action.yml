@@ -1,0 +1,90 @@
+name: 'GitHub Commit Status'
+description: 'GitHub action to set a status update for a commit'
+author: 'IBM'
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  github_token:
+    description: 'Personal access token used to authenticate with the GitHub API. Defaults to pipeline token'
+    required: false
+    type: string
+  state:
+    description: 'The state of the commit status (error, failure, pending, success)'
+    required: true
+    type: string
+  description:
+    description: 'The description of the commit status'
+    required: false
+    type: string
+  context:
+    description: 'The context of the commit status'
+    required: false
+    type: string
+    default: 'default'
+  sha:
+    description: 'The SHA of the commit to set the status for'
+    required: true
+    type: string
+  target_url:
+    description: 'The URL of the target of the status update'
+    required: false
+    type: string
+    default: ''
+  github_repository:
+    description: 'The owner and name of the repository where the commit is located'
+    required: true
+    type: string
+
+outputs:
+  status_code:
+    description: 'HTTP status code from the GitHub API'
+    value: ${{ steps.set-status.outputs.status_code }}
+
+runs:
+  using: composite
+  steps:
+  - name: Set Commit Status
+    id: set-status
+    shell: bash
+    env:
+      GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
+    run: |
+      set -eu
+      set -o pipefail
+      
+      STATE="${{ inputs.state }}"
+      DESCRIPTION="${{ inputs.description }}"
+      CONTEXT="${{ inputs.context }}"
+      SHA="${{ inputs.sha }}"
+      TARGET_URL="${{ inputs.target_url }}"
+      REPO="${{ inputs.github_repository }}"
+      
+      echo "Setting commit status for SHA: ${SHA}"
+      echo "State: ${STATE}"
+      echo "Context: ${CONTEXT}"
+      echo "Description: ${DESCRIPTION}"
+      
+      # Make API call to set commit status
+      HTTP_CODE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -X POST \
+            --retry 3 \
+            -d "{\"state\":\"${STATE}\",\"description\":\"${DESCRIPTION}\",\"context\":\"${CONTEXT}\",\"target_url\":\"${TARGET_URL}\"}" \
+            "https://api.github.com/repos/${REPO}/statuses/${SHA}")
+      
+      echo "HTTP Status Code: ${HTTP_CODE}"
+      echo "status_code=${HTTP_CODE}" >> $GITHUB_OUTPUT
+      
+      # Check if the request was successful
+      if [[ "$HTTP_CODE" == "201" ]]; then
+        echo "✓ Commit status set successfully"
+        cat /tmp/response.json
+      else
+        echo "::error::Failed to set commit status. HTTP code: ${HTTP_CODE}"
+        cat /tmp/response.json
+        exit 1
+      fi
