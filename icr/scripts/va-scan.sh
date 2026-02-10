@@ -101,9 +101,16 @@ run_va_scan() {
                 ;;
             FAIL)
                 print_error "✗ Vulnerability scan failed with status: FAIL - Critical vulnerabilities found"
-                echo "::error::Critical vulnerabilities found in image"
                 echo "status=FAIL" >> $GITHUB_OUTPUT
-                exit 1
+                
+                # Check if we should fail the build on vulnerability
+                if [ "${FAIL_ON_VULNERABILITY:-true}" = "true" ]; then
+                    echo "::error::Critical vulnerabilities found in image"
+                    exit 1
+                else
+                    print_warning "⚠ Build will continue despite FAIL status (scan-fail-on-vulnerability is disabled)"
+                    echo "::warning::Critical vulnerabilities found but build is allowed to continue"
+                fi
                 ;;
             *)
                 print_error "✗ Vulnerability scan returned unexpected status: $SCAN_STATUS"

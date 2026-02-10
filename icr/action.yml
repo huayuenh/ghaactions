@@ -28,6 +28,11 @@ inputs:
     required: false
     default: 'true'
   
+  scan-fail-on-vulnerability:
+    description: 'Fail the build if FAIL status is returned from vulnerability scan'
+    required: false
+    default: 'true'
+  
   region:
     description: 'IBM Cloud region (us-south, eu-gb, etc.). Auto-detected from image path if not specified'
     required: false
@@ -237,6 +242,8 @@ runs:
       id: scan
       if: inputs.scan == 'true' && (inputs.action == 'push' || inputs.action == 'pull')
       shell: bash
+      env:
+        FAIL_ON_VULNERABILITY: ${{ inputs.scan-fail-on-vulnerability }}
       run: ${{ github.action_path }}/scripts/va-scan.sh "${{ inputs.image }}"
     
     - name: Cleanup
