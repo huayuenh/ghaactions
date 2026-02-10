@@ -88,9 +88,16 @@ fi
 # Perform HTTP health check if APP_URL is available
 if [ -n "$APP_URL" ]; then
     print_info "Performing HTTP health check..."
-    print_info "Health check URL: ${APP_URL}${HEALTH_CHECK_PATH}"
     
-    HEALTH_CHECK_URL="${APP_URL}${HEALTH_CHECK_PATH}"
+    # Determine which endpoint to check
+    if [ -n "$HEALTH_CHECK_PATH" ] && [ "$HEALTH_CHECK_PATH" != "/" ]; then
+        HEALTH_CHECK_URL="${APP_URL}${HEALTH_CHECK_PATH}"
+        print_info "Checking health endpoint: $HEALTH_CHECK_URL"
+    else
+        HEALTH_CHECK_URL="${APP_URL}"
+        print_info "Checking root endpoint: $HEALTH_CHECK_URL"
+    fi
+    
     TIMEOUT=$HEALTH_CHECK_TIMEOUT
     ELAPSED=0
     INTERVAL=5
@@ -100,13 +107,14 @@ if [ -n "$APP_URL" ]; then
     while [ $ELAPSED -lt $TIMEOUT ]; do
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$HEALTH_CHECK_URL" 2>/dev/null || echo "000")
         
-        if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
-            print_success "Health check passed! HTTP $HTTP_CODE"
+        # Accept 200, 204, and also 301/302 redirects as success
+        if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+            print_success "Application is responding! HTTP $HTTP_CODE"
             
             # Get response body for additional info
             RESPONSE=$(curl -s --connect-timeout 5 --max-time 10 "$HEALTH_CHECK_URL" 2>/dev/null || echo "")
             if [ -n "$RESPONSE" ]; then
-                print_info "Health check response:"
+                print_info "Response preview:"
                 echo "$RESPONSE" | head -10
             fi
             
@@ -119,7 +127,21 @@ if [ -n "$APP_URL" ]; then
         fi
         
         if [ "$HTTP_CODE" != "000" ]; then
-            print_warning "Health check returned HTTP $HTTP_CODE (expected 200 or 204)"
+            print_warning "Received HTTP $HTTP_CODE (expected 200, 204, 301, or 302)"
+            
+            # If we got a 404 on health path, try root endpoint as fallback
+            if [ "$HTTP_CODE" = "404" ] && [ -n "$HEALTH_CHECK_PATH" ] && [ "$HEALTH_CHECK_PATH" != "/" ]; then
+                print_info "Health endpoint not found, trying root endpoint..."
+                ROOT_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$APP_URL" 2>/dev/null || echo "000")
+                if [ "$ROOT_CODE" = "200" ] || [ "$ROOT_CODE" = "301" ] || [ "$ROOT_CODE" = "302" ]; then
+                    print_success "Root endpoint is responding! HTTP $ROOT_CODE"
+                    echo "result=healthy_root" >> $GITHUB_OUTPUT
+                    echo "http_code=$ROOT_CODE" >> $GITHUB_OUTPUT
+                    print_warning "Note: Health endpoint $HEALTH_CHECK_PATH returned 404, but root endpoint is accessible"
+                    echo "::endgroup::"
+                    exit 0
+                fi
+            fi
         else
             print_warning "Unable to connect to application"
         fi

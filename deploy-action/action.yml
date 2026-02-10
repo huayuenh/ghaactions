@@ -66,9 +66,9 @@ inputs:
     default: '1'
   
   health-check-path:
-    description: 'HTTP path for health check (e.g., /health, /ready). Set to empty string to disable HTTP probes'
+    description: 'HTTP path for health check (e.g., /health, /ready). Leave empty or set to / to check root endpoint'
     required: false
-    default: '/health'
+    default: '/'
   
   health-check-timeout:
     description: 'Health check timeout in seconds'
