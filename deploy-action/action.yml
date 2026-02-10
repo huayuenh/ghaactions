@@ -66,7 +66,7 @@ inputs:
     default: '1'
   
   health-check-path:
-    description: 'HTTP path for health check (e.g., /health, /ready)'
+    description: 'HTTP path for health check (e.g., /health, /ready). Set to empty string to disable HTTP probes'
     required: false
     default: '/health'
   
@@ -74,6 +74,19 @@ inputs:
     description: 'Health check timeout in seconds'
     required: false
     default: '300'
+  
+  enable-probes:
+    description: 'Enable liveness and readiness probes (true/false)'
+    required: false
+    default: 'true'
+  
+  readiness-probe-path:
+    description: 'HTTP path for readiness probe. Defaults to health-check-path if not specified'
+    required: false
+  
+  liveness-probe-path:
+    description: 'HTTP path for liveness probe. Defaults to health-check-path if not specified'
+    required: false
   
   resource-limits-cpu:
     description: 'CPU resource limit (e.g., 500m, 1)'
@@ -199,6 +212,9 @@ runs:
         INGRESS_TLS: ${{ inputs.ingress-tls }}
         IBM_CLOUD_API_KEY: ${{ inputs.ibmcloud-apikey }}
         HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
+        ENABLE_PROBES: ${{ inputs.enable-probes }}
+        READINESS_PROBE_PATH: ${{ inputs.readiness-probe-path }}
+        LIVENESS_PROBE_PATH: ${{ inputs.liveness-probe-path }}
     
     - name: Health check
       id: health-check

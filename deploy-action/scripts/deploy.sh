@@ -149,19 +149,45 @@ EOF
           requests:
             cpu: $RESOURCE_REQUESTS_CPU
             memory: $RESOURCE_REQUESTS_MEMORY
+EOF
+
+    # Add probes if enabled
+    if [ "$ENABLE_PROBES" = "true" ]; then
+        # Determine probe paths
+        LIVENESS_PATH="${LIVENESS_PROBE_PATH:-$HEALTH_CHECK_PATH}"
+        READINESS_PATH="${READINESS_PROBE_PATH:-$HEALTH_CHECK_PATH}"
+        
+        # Only add probes if paths are not empty
+        if [ -n "$LIVENESS_PATH" ]; then
+            print_info "Adding liveness probe: $LIVENESS_PATH"
+            cat >> /tmp/deployment.yaml <<EOF
         livenessProbe:
           httpGet:
-            path: $HEALTH_CHECK_PATH
+            path: $LIVENESS_PATH
             port: $PORT
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+EOF
+        fi
+        
+        if [ -n "$READINESS_PATH" ]; then
+            print_info "Adding readiness probe: $READINESS_PATH"
+            cat >> /tmp/deployment.yaml <<EOF
         readinessProbe:
           httpGet:
-            path: $HEALTH_CHECK_PATH
+            path: $READINESS_PATH
             port: $PORT
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
 EOF
+        fi
+    else
+        print_warning "Health probes are disabled"
+    fi
 
     # Add environment variables if provided
     if [ -n "$ENV_VARS" ]; then
