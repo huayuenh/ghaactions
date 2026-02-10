@@ -151,8 +151,10 @@ EOF
             memory: $RESOURCE_REQUESTS_MEMORY
 EOF
 
-    # Add probes if enabled
-    if [ "$ENABLE_PROBES" = "true" ]; then
+    # Add probes if enabled (case-insensitive check)
+    ENABLE_PROBES_LOWER=$(echo "$ENABLE_PROBES" | tr '[:upper:]' '[:lower:]')
+    if [ "$ENABLE_PROBES_LOWER" = "true" ]; then
+        print_info "Health probes are enabled"
         # Determine probe paths
         LIVENESS_PATH="${LIVENESS_PROBE_PATH:-$HEALTH_CHECK_PATH}"
         READINESS_PATH="${READINESS_PROBE_PATH:-$HEALTH_CHECK_PATH}"

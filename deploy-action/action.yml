@@ -78,7 +78,7 @@ inputs:
   enable-probes:
     description: 'Enable liveness and readiness probes (true/false)'
     required: false
-    default: 'true'
+    default: 'false'
   
   readiness-probe-path:
     description: 'HTTP path for readiness probe. Defaults to health-check-path if not specified'
