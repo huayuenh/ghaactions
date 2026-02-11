@@ -182,6 +182,13 @@ runs:
         echo "✓ Input validation passed"
         echo "::endgroup::"
     
+    - name: Setup IBM Cloud CLI
+      id: setup-ibmcloud
+      if: inputs.ibmcloud-apikey != ''
+      uses: IBM/actions-ibmcloud-cli@v1
+      with:
+        plugins: container-service
+    
     - name: Setup cluster access
       shell: bash
       run: ${{ github.action_path }}/scripts/setup-cluster.sh

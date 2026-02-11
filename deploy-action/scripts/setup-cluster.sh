@@ -32,13 +32,6 @@ elif [ -n "$IBM_CLOUD_API_KEY" ]; then
     # Use IBM Cloud CLI to get cluster config
     print_info "Authenticating with IBM Cloud"
     
-    # Check if IBM Cloud CLI is installed
-    if ! command -v ibmcloud &> /dev/null; then
-        print_info "Installing IBM Cloud CLI..."
-        curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
-        handle_error $? "Failed to install IBM Cloud CLI"
-    fi
-    
     # Login to IBM Cloud
     ibmcloud login --apikey "$IBM_CLOUD_API_KEY" -r "$CLUSTER_REGION"
     handle_error $? "Failed to authenticate with IBM Cloud"
@@ -47,22 +40,12 @@ elif [ -n "$IBM_CLOUD_API_KEY" ]; then
     
     # Install required plugins based on cluster type
     if [ "$CLUSTER_TYPE" = "openshift" ]; then
-        print_info "Installing OpenShift plugin..."
-        if ! ibmcloud plugin list | grep -q "container-service"; then
-            ibmcloud plugin install container-service -f
-        fi
-        
         # Get OpenShift cluster config
         print_info "Getting OpenShift cluster configuration..."
         ibmcloud oc cluster config --cluster "$CLUSTER_NAME" --admin
         handle_error $? "Failed to get OpenShift cluster configuration"
         
     else
-        print_info "Installing Kubernetes plugin..."
-        if ! ibmcloud plugin list | grep -q "container-service"; then
-            ibmcloud plugin install container-service -f
-        fi
-        
         # Get Kubernetes cluster config
         print_info "Getting Kubernetes cluster configuration..."
         ibmcloud ks cluster config --cluster "$CLUSTER_NAME" --admin
