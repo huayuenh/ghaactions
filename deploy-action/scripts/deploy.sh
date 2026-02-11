@@ -2,39 +2,9 @@
 
 set -e
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-handle_error() {
-    local exit_code=$1
-    local error_message=$2
-    
-    if [ $exit_code -ne 0 ]; then
-        print_error "$error_message"
-        echo "::error::$error_message"
-        exit $exit_code
-    fi
-}
+# Source common utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
 
 echo "::group::Deploying application"
 
