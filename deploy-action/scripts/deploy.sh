@@ -364,8 +364,13 @@ elif [ "$SERVICE_TYPE" = "ClusterIP" ]; then
         print_info "Internal URL: http://${SERVICE_IP}"
         print_info "Service DNS: ${DEPLOYMENT_NAME}.${NAMESPACE}.svc.cluster.local"
         
-        # For ClusterIP, provide the internal DNS name as the URL
-        APP_URL="http://${DEPLOYMENT_NAME}.${NAMESPACE}.svc.cluster.local"
+        # Only set APP_URL if Ingress is not configured
+        if [ -z "$INGRESS_HOST" ]; then
+            # For ClusterIP without Ingress, provide the internal DNS name as the URL
+            APP_URL="http://${DEPLOYMENT_NAME}.${NAMESPACE}.svc.cluster.local"
+        else
+            print_info "Ingress will be configured - skipping ClusterIP URL"
+        fi
     fi
 fi
 
