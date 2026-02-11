@@ -129,6 +129,11 @@ inputs:
     description: 'Enable TLS for ingress'
     required: false
     default: 'false'
+  
+  auto-ingress:
+    description: 'Automatically detect and configure IBM Cloud cluster ingress subdomain'
+    required: false
+    default: 'false'
 
 outputs:
   deployment-status:
@@ -210,7 +215,9 @@ runs:
         ROUTE_HOSTNAME: ${{ inputs.route-hostname }}
         INGRESS_HOST: ${{ inputs.ingress-host }}
         INGRESS_TLS: ${{ inputs.ingress-tls }}
+        AUTO_INGRESS: ${{ inputs.auto-ingress }}
         IBM_CLOUD_API_KEY: ${{ inputs.ibmcloud-apikey }}
+        CLUSTER_NAME: ${{ inputs.cluster-name }}
         HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
         ENABLE_PROBES: ${{ inputs.enable-probes }}
         READINESS_PROBE_PATH: ${{ inputs.readiness-probe-path }}

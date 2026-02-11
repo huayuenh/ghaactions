@@ -392,6 +392,34 @@ if [ "$CLUSTER_TYPE" = "openshift" ] && [ "$CREATE_ROUTE" = "true" ]; then
     fi
 fi
 
+# Auto-detect IBM Cloud Ingress subdomain if requested
+if [ "$CLUSTER_TYPE" = "kubernetes" ] && [ "$AUTO_INGRESS" = "true" ] && [ -z "$INGRESS_HOST" ]; then
+    print_info "Auto-detecting IBM Cloud cluster ingress subdomain..."
+    
+    if [ -n "$CLUSTER_NAME" ] && command -v ibmcloud &> /dev/null; then
+        # Get the ingress subdomain from IBM Cloud
+        INGRESS_SUBDOMAIN=$(ibmcloud ks cluster get --cluster "$CLUSTER_NAME" 2>/dev/null | grep "Ingress Subdomain" | awk '{print $NF}' || echo "")
+        
+        if [ -n "$INGRESS_SUBDOMAIN" ] && [ "$INGRESS_SUBDOMAIN" != "-" ]; then
+            # Create a unique hostname using deployment name
+            INGRESS_HOST="${DEPLOYMENT_NAME}.${INGRESS_SUBDOMAIN}"
+            print_success "Auto-detected ingress subdomain: $INGRESS_SUBDOMAIN"
+            print_info "Using ingress host: $INGRESS_HOST"
+            
+            # Enable TLS by default for IBM Cloud ingress
+            if [ -z "$INGRESS_TLS" ] || [ "$INGRESS_TLS" != "false" ]; then
+                INGRESS_TLS="true"
+                print_info "TLS enabled for IBM Cloud ingress"
+            fi
+        else
+            print_warning "Could not auto-detect ingress subdomain for cluster: $CLUSTER_NAME"
+            print_warning "Ingress will not be configured"
+        fi
+    else
+        print_warning "Cannot auto-detect ingress: ibmcloud CLI not available or CLUSTER_NAME not set"
+    fi
+fi
+
 # Handle Kubernetes Ingress
 if [ "$CLUSTER_TYPE" = "kubernetes" ] && [ -n "$INGRESS_HOST" ]; then
     print_info "Creating Kubernetes ingress..."
