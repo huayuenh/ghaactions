@@ -97,7 +97,48 @@ if [ -n "$DEPLOYMENT_MANIFEST" ] && [ -f "$DEPLOYMENT_MANIFEST" ]; then
     # Use provided manifest
     print_info "Using deployment manifest: $DEPLOYMENT_MANIFEST"
     
-    # Replace image in manifest if needed
+    # Parse manifest to extract service and ingress information
+    print_info "Parsing manifest for service and ingress configuration..."
+    
+    # Extract service type from manifest (look for ClusterIP, NodePort, or LoadBalancer)
+    MANIFEST_SERVICE_TYPE=$(grep -A 10 "kind: Service" "$DEPLOYMENT_MANIFEST" | grep "type:" | head -1 | awk '{print $2}' || echo "")
+    if [ -n "$MANIFEST_SERVICE_TYPE" ]; then
+        print_info "Found service type in manifest: $MANIFEST_SERVICE_TYPE"
+        SERVICE_TYPE="$MANIFEST_SERVICE_TYPE"
+    fi
+    
+    # Extract service name from manifest
+    MANIFEST_SERVICE_NAME=$(grep -B 5 "kind: Service" "$DEPLOYMENT_MANIFEST" | grep "name:" | tail -1 | awk '{print $2}' || echo "")
+    if [ -n "$MANIFEST_SERVICE_NAME" ]; then
+        print_info "Found service name in manifest: $MANIFEST_SERVICE_NAME"
+    fi
+    
+    # Check if manifest contains Ingress
+    if grep -q "kind: Ingress" "$DEPLOYMENT_MANIFEST"; then
+        print_info "Ingress configuration found in manifest"
+        
+        # Extract ingress host from manifest
+        MANIFEST_INGRESS_HOST=$(grep -A 20 "kind: Ingress" "$DEPLOYMENT_MANIFEST" | grep "host:" | head -1 | awk '{print $2}' | tr -d '"' || echo "")
+        if [ -n "$MANIFEST_INGRESS_HOST" ]; then
+            print_info "Found ingress host in manifest: $MANIFEST_INGRESS_HOST"
+            
+            # Check if it's a placeholder that needs to be replaced
+            if [[ "$MANIFEST_INGRESS_HOST" == *"cluster-ingress-subdomain"* ]] && [ "$AUTO_INGRESS" = "true" ]; then
+                print_info "Ingress host is a placeholder, will auto-detect actual subdomain"
+                # Will be handled by auto-ingress logic later
+            else
+                INGRESS_HOST="$MANIFEST_INGRESS_HOST"
+            fi
+        fi
+        
+        # Check if TLS is configured in manifest
+        if grep -A 30 "kind: Ingress" "$DEPLOYMENT_MANIFEST" | grep -q "tls:"; then
+            print_info "TLS configuration found in manifest"
+            INGRESS_TLS="true"
+        fi
+    fi
+    
+    # Replace image placeholder and apply manifest
     sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" "$DEPLOYMENT_MANIFEST" | $CMD apply -n "$NAMESPACE" -f -
     handle_error $? "Failed to apply deployment manifest"
     
@@ -393,7 +434,7 @@ if [ "$CLUSTER_TYPE" = "openshift" ] && [ "$CREATE_ROUTE" = "true" ]; then
 fi
 
 # Auto-detect IBM Cloud Ingress subdomain if requested
-if [ "$CLUSTER_TYPE" = "kubernetes" ] && [ "$AUTO_INGRESS" = "true" ] && [ -z "$INGRESS_HOST" ]; then
+if [ "$CLUSTER_TYPE" = "kubernetes" ] && [ "$AUTO_INGRESS" = "true" ]; then
     print_info "Auto-detecting IBM Cloud cluster ingress subdomain..."
     
     if [ -n "$CLUSTER_NAME" ] && command -v ibmcloud &> /dev/null; then
@@ -401,10 +442,29 @@ if [ "$CLUSTER_TYPE" = "kubernetes" ] && [ "$AUTO_INGRESS" = "true" ] && [ -z "$
         INGRESS_SUBDOMAIN=$(ibmcloud ks cluster get --cluster "$CLUSTER_NAME" 2>/dev/null | grep "Ingress Subdomain" | awk '{print $NF}' || echo "")
         
         if [ -n "$INGRESS_SUBDOMAIN" ] && [ "$INGRESS_SUBDOMAIN" != "-" ]; then
-            # Create a unique hostname using deployment name
-            INGRESS_HOST="${DEPLOYMENT_NAME}.${INGRESS_SUBDOMAIN}"
             print_success "Auto-detected ingress subdomain: $INGRESS_SUBDOMAIN"
-            print_info "Using ingress host: $INGRESS_HOST"
+            
+            # If using a manifest with placeholder, replace it
+            if [ -n "$DEPLOYMENT_MANIFEST" ] && [ -f "$DEPLOYMENT_MANIFEST" ]; then
+                if grep -q "cluster-ingress-subdomain" "$DEPLOYMENT_MANIFEST"; then
+                    print_info "Replacing cluster-ingress-subdomain placeholder in manifest..."
+                    
+                    # Create a temporary file with replacements
+                    sed "s|cluster-ingress-subdomain|${INGRESS_SUBDOMAIN}|g" "$DEPLOYMENT_MANIFEST" > /tmp/deployment-with-ingress.yaml
+                    
+                    # Apply the updated manifest
+                    sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" /tmp/deployment-with-ingress.yaml | $CMD apply -n "$NAMESPACE" -f -
+                    handle_error $? "Failed to apply manifest with ingress subdomain"
+                    
+                    # Extract the actual ingress host that was applied
+                    INGRESS_HOST=$(grep -A 20 "kind: Ingress" /tmp/deployment-with-ingress.yaml | grep "host:" | head -1 | awk '{print $2}' | tr -d '"' || echo "")
+                    print_info "Ingress host from manifest: $INGRESS_HOST"
+                fi
+            elif [ -z "$INGRESS_HOST" ]; then
+                # No manifest or no placeholder - create hostname using deployment name
+                INGRESS_HOST="${DEPLOYMENT_NAME}.${INGRESS_SUBDOMAIN}"
+                print_info "Using ingress host: $INGRESS_HOST"
+            fi
             
             # Enable TLS by default for IBM Cloud ingress
             if [ -z "$INGRESS_TLS" ] || [ "$INGRESS_TLS" != "false" ]; then
