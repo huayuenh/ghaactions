@@ -290,27 +290,48 @@ elif [ "$SERVICE_TYPE" = "NodePort" ]; then
     # Try multiple methods to get a public/external IP
     NODE_IP=""
     
-    # Method 1: Try to get ExternalIP from any node
-    NODE_IP=$($CMD get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null | awk '{print $1}')
-    
-    # Method 2: For IBM Cloud, try to get public IP from node labels
-    if [ -z "$NODE_IP" ]; then
-        NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].metadata.labels.ibm-cloud\.kubernetes\.io/external-ip}' 2>/dev/null || echo "")
-        if [ -n "$NODE_IP" ]; then
-            print_info "Found IBM Cloud public IP from node labels"
+    # Method 1: For IBM Cloud clusters, use ibmcloud CLI to get public IP
+    if [ -n "$IBM_CLOUD_API_KEY" ] && command -v ibmcloud &> /dev/null && [ -n "$CLUSTER_NAME" ]; then
+        print_info "Attempting to get public IP via IBM Cloud CLI..."
+        
+        # Get list of workers and extract public IP
+        WORKERS_OUTPUT=$(ibmcloud ks workers --cluster "$CLUSTER_NAME" --output json 2>/dev/null || echo "")
+        
+        if [ -n "$WORKERS_OUTPUT" ]; then
+            # Try to get public IP from first worker
+            NODE_IP=$(echo "$WORKERS_OUTPUT" | grep -o '"publicIP":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+            
+            if [ -n "$NODE_IP" ] && [ "$NODE_IP" != "null" ] && [ "$NODE_IP" != "-" ]; then
+                print_success "Found public IP via IBM Cloud CLI: $NODE_IP"
+            else
+                print_warning "No public IP found in IBM Cloud worker info"
+                NODE_IP=""
+            fi
         fi
     fi
     
-    # Method 3: Try ibmcloud CLI if available and we have IBM Cloud API key
-    if [ -z "$NODE_IP" ] && [ -n "$IBM_CLOUD_API_KEY" ] && command -v ibmcloud &> /dev/null; then
-        print_info "Attempting to get public IP via IBM Cloud CLI..."
-        # Get first worker's public IP
-        WORKER_ID=$($CMD get nodes -o jsonpath='{.items[0].metadata.labels.ibm-cloud\.kubernetes\.io/worker-id}' 2>/dev/null || echo "")
-        if [ -n "$WORKER_ID" ]; then
-            NODE_IP=$(ibmcloud ks worker get --worker "$WORKER_ID" --cluster "$CLUSTER_NAME" --output json 2>/dev/null | grep -o '"publicIP":"[^"]*"' | cut -d'"' -f4 || echo "")
-            if [ -n "$NODE_IP" ]; then
-                print_info "Found public IP via IBM Cloud CLI"
+    # Method 2: Try to get ExternalIP from nodes (works for non-VPC clusters)
+    if [ -z "$NODE_IP" ]; then
+        EXTERNAL_IP=$($CMD get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null | awk '{print $1}')
+        
+        # Check if it's a public IP (not starting with 10., 172.16-31., or 192.168.)
+        if [ -n "$EXTERNAL_IP" ]; then
+            if [[ ! "$EXTERNAL_IP" =~ ^10\. ]] && [[ ! "$EXTERNAL_IP" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$EXTERNAL_IP" =~ ^192\.168\. ]]; then
+                NODE_IP="$EXTERNAL_IP"
+                print_info "Found public ExternalIP from node"
+            else
+                print_warning "ExternalIP is a private IP: $EXTERNAL_IP"
             fi
+        fi
+    fi
+    
+    # Method 3: Try to get public IP from IBM Cloud node labels
+    if [ -z "$NODE_IP" ]; then
+        NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].metadata.labels.ibm-cloud\.kubernetes\.io/external-ip}' 2>/dev/null || echo "")
+        if [ -n "$NODE_IP" ] && [ "$NODE_IP" != "null" ]; then
+            print_info "Found IBM Cloud public IP from node labels"
+        else
+            NODE_IP=""
         fi
     fi
     
@@ -326,7 +347,7 @@ elif [ "$SERVICE_TYPE" = "NodePort" ]; then
     if [ -z "$NODE_IP" ]; then
         NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
         print_warning "No public IP found - using internal node IP (may not be accessible externally)"
-        print_warning "Consider using LoadBalancer service type or configuring Ingress for external access"
+        print_warning "For IBM Cloud VPC clusters, ensure you have a public gateway or use LoadBalancer service type"
     fi
     
     if [ -n "$NODE_IP" ] && [ -n "$NODE_PORT" ]; then
