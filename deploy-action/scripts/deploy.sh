@@ -287,12 +287,46 @@ if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
 elif [ "$SERVICE_TYPE" = "NodePort" ]; then
     NODE_PORT=$($CMD get service $DEPLOYMENT_NAME -n "$NAMESPACE" -o jsonpath='{.spec.ports[0].nodePort}')
     
-    # Try to get external IP first, fall back to internal IP
-    NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || echo "")
+    # Try multiple methods to get a public/external IP
+    NODE_IP=""
     
+    # Method 1: Try to get ExternalIP from any node
+    NODE_IP=$($CMD get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null | awk '{print $1}')
+    
+    # Method 2: For IBM Cloud, try to get public IP from node labels
+    if [ -z "$NODE_IP" ]; then
+        NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].metadata.labels.ibm-cloud\.kubernetes\.io/external-ip}' 2>/dev/null || echo "")
+        if [ -n "$NODE_IP" ]; then
+            print_info "Found IBM Cloud public IP from node labels"
+        fi
+    fi
+    
+    # Method 3: Try ibmcloud CLI if available and we have IBM Cloud API key
+    if [ -z "$NODE_IP" ] && [ -n "$IBM_CLOUD_API_KEY" ] && command -v ibmcloud &> /dev/null; then
+        print_info "Attempting to get public IP via IBM Cloud CLI..."
+        # Get first worker's public IP
+        WORKER_ID=$($CMD get nodes -o jsonpath='{.items[0].metadata.labels.ibm-cloud\.kubernetes\.io/worker-id}' 2>/dev/null || echo "")
+        if [ -n "$WORKER_ID" ]; then
+            NODE_IP=$(ibmcloud ks worker get --worker "$WORKER_ID" --cluster "$CLUSTER_NAME" --output json 2>/dev/null | grep -o '"publicIP":"[^"]*"' | cut -d'"' -f4 || echo "")
+            if [ -n "$NODE_IP" ]; then
+                print_info "Found public IP via IBM Cloud CLI"
+            fi
+        fi
+    fi
+    
+    # Method 4: Fall back to Hostname type address
+    if [ -z "$NODE_IP" ]; then
+        NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="Hostname")].address}' 2>/dev/null || echo "")
+        if [ -n "$NODE_IP" ]; then
+            print_info "Using node hostname"
+        fi
+    fi
+    
+    # Method 5: Last resort - use internal IP with warning
     if [ -z "$NODE_IP" ]; then
         NODE_IP=$($CMD get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-        print_info "Using internal node IP (no external IP available)"
+        print_warning "No public IP found - using internal node IP (may not be accessible externally)"
+        print_warning "Consider using LoadBalancer service type or configuring Ingress for external access"
     fi
     
     if [ -n "$NODE_IP" ] && [ -n "$NODE_PORT" ]; then
